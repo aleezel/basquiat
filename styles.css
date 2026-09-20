@@ -144,27 +144,6 @@ body {
   background: #f5f0e8;
 }
 
-.chapter-1 {
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 2rem;
-  font-family: 'Chivo Mono', monospace;
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #f5f0e8;
-  position: relative;
-}
-
-.chapter-door {
-  width: 22vw;
-  max-width: 260px;
-  transform-origin: center left;
-}
-
 #gui {
   position: fixed;
   top: 1rem;
@@ -199,4 +178,56 @@ body {
 #gui input[type=range] {
   width: 100%;
   accent-color: #fff;
+}
+
+/* The final door and its world occupy a single immersive viewport. */
+.chapter-1.line-space {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 100svh;
+  min-height: 480px;
+  overflow: hidden;
+  background: #252525;
+}
+.space-viewport {
+  position: absolute;
+  inset: 0;
+  opacity: .28;
+}
+.space-viewport::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 46%, transparent 35%, #17191866 100%);
+}
+#space-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: pan-y;
+}
+#space-canvas.is-dragging { cursor: grabbing; }
+#space-canvas:focus-visible { outline: 1px solid #e2dfc470; outline-offset: -6px; }
+.chapter-door {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 50%;
+  width: clamp(180px, 22vw, 300px);
+  max-width: none;
+  transform: translate(-50%, -50%);
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+body.space-in-view #gui { visibility: hidden; }
+@media (max-width: 700px) {
+  .chapter-1.line-space { min-height: 360px; }
+  .chapter-door { width: 46vw; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .space-viewport { opacity: 1; }
+  .chapter-door { visibility: hidden; }
 }
