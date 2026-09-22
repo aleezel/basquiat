@@ -1,4 +1,6 @@
 // Perspective-projected 3D line geometry; no external runtime required.
+
+
 (() => {
   const canvas = document.getElementById('space-canvas');
   if (!canvas) return;
@@ -12,65 +14,68 @@
     points.slice(1).forEach((p, i) => line(points[i], p, tone));
     if (close) line(points.at(-1), points[0], tone);
   };
-  const ring = (x, y, z, radius, tone) => {
-    path(Array.from({ length: 65 }, (_, i) => {
-      const angle = i / 64 * Math.PI * 2;
-      return [x + Math.cos(angle) * radius, y + Math.sin(angle) * radius, z];
-    }), tone);
-  };
-  for (let n = -50; n <= 50; n += 2) line([n, 0, -55], [n, 0, 25], 'grid');
-  for (let n = -55; n <= 25; n += 2) line([-50, 0, n], [50, 0, n], 'grid');
-  path([[-8, .02, -4], [8, .02, -4], [8, .02, 4], [-8, .02, 4]], 'structure', true);
-  path([[-8, -.2, -4], [8, -.2, -4], [8, -.2, 4], [-8, -.2, 4]], 'muted', true);
-  // A curved six-by-eight array of circular panels, inspired by the reference.
-  for (let row = 0; row < 6; row++) {
-    const y = .65 + row * 1.05;
-    const z = -1.7 - Math.pow(row / 5, 2) * 1.5;
-    for (let col = 0; col < 8; col++) {
-      const x = (col - 3.5) * 1.05;
-      path([[x - .5, y - .5, z], [x + .5, y - .5, z], [x + .5, y + .5, z], [x - .5, y + .5, z]], 'structure', true);
+  // A 360-degree line room: the camera remains at its center and scroll rotates its view.
+  const radius = 14, roomHeight = 12, columns = 32, rows = 6;
+  const wallPoint = (angle, y, r = radius) => [Math.sin(angle) * r, y, -Math.cos(angle) * r];
+  const horizontalRing = (r, y, tone) => path(
+    Array.from({ length: 129 }, (_, i) => wallPoint(i / 128 * Math.PI * 2, y, r)),
+    tone
+  );
+  for (let row = 0; row <= rows; row++) {
+    horizontalRing(radius, row * 2, row === 0 || row === rows ? 'structure' : 'muted');
+  }
+  for (let col = 0; col < columns; col++) {
+    const angle = col / columns * Math.PI * 2;
+    line(wallPoint(angle, 0), wallPoint(angle, roomHeight), 'structure');
+    line([0, 0, 0], wallPoint(angle, 0), 'grid');
+    line([0, roomHeight, 0], wallPoint(angle, roomHeight), 'grid');
+    for (let row = 0; row < rows; row++) {
+      const centerAngle = angle + Math.PI / columns;
+      const y = row * 2 + 1;
       const accent = (col + row * 3) % 11 === 0;
-      ring(x, y, z + .01, .43, accent ? 'accent' : 'muted');
-      if (accent) ring(x, y, z + .02, .24, 'accent');
-      line([x, y, z], [x + .3, y + .3, z], 'detail');
+      const circle = (size, tone) => path(Array.from({ length: 33 }, (_, i) => {
+        const t = i / 32 * Math.PI * 2;
+        return wallPoint(centerAngle + Math.cos(t) * size / radius, y + Math.sin(t) * size);
+      }), tone);
+      circle(.78, accent ? 'accent' : 'muted');
+      if (accent) circle(.4, 'accent');
     }
   }
-  for (const x of [-4.25, 0, 4.25]) path([[x, 0, -1.7], [x, 6.4, -3.25], [x, 0, -4.8]], 'muted', true);
-  for (const z of [.7, 1]) path([[5.5, 0, z], [5.5, 4.6, z], [7.4, 4.6, z], [7.4, 0, z]], 'structure');
-  for (const x of [5.5, 7.4]) line([x, 4.6, .7], [x, 4.6, 1], 'structure');
-  for (const y of [0, .55]) path([[-4, y, 2], [-1.5, y, 2], [-1.5, y, 3], [-4, y, 3]], 'muted', true);
-  for (const x of [-4, -1.5]) for (const z of [2, 3]) line([x, 0, z], [x, .55, z], 'muted');
-
-
-  // Scale the installation to architectural proportions around an eye-level camera.
-  lines.forEach(segment => {
-    if (segment.tone !== 'grid') {
-      segment.a = segment.a.map(value => value * 2.3);
-      segment.b = segment.b.map(value => value * 2.3);
-    }
-  });
-  const travel = { z: 14, x: 0, yaw: 0, pitch: .07 };
+  for (let r = 2; r < radius; r += 2) {
+    horizontalRing(r, 0, 'grid');
+    horizontalRing(r, roomHeight, 'grid');
+  }
+  const travel = { yaw: 0, pitch: 0 };
   const look = { yaw: 0, pitch: 0, zoom: 0 };
+  const memoryPlanes = [
+    ['assets/img/tunnel-01-cassette-.png', 3.2, 3.2],
+    ['assets/img/tunnel-02-walkman-.png', 7.1, 3.5],
+    ['assets/img/tunnel-03-ipod.png', 4.4, 3.05],
+    ['assets/img/tunnel-04-crt-tv.png', 8.8, 3.8],
+    ['assets/img/tunnel-05-smartphone.png', 1.8, 2.7],
+  ].map(([src, y, size]) => {
+    const image = new Image();
+    const plane = { image, y, size, phase: 0 };
+    image.addEventListener('load', () => invalidate());
+    image.src = src;
+    return plane;
+  });
   const stage = document.getElementById('line-space');
-  const door = stage.querySelector('.chapter-door');
-  const layer = stage.querySelector('.space-viewport');
+  const camera = { cy: 1, sy: 0, cp: 1, sp: 0, focal: 1 };
+
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let visible = false;
+  let active = false;
 
   // Camera-space clipping prevents huge strokes when a line crosses the lens.
   function cameraPoint([x, y, z]) {
-    x -= travel.x;
-    y -= 2.5;
-    z -= travel.z + look.zoom;
-    const yaw = travel.yaw + look.yaw, pitch = travel.pitch + look.pitch;
-    const cy = Math.cos(yaw), sy = Math.sin(yaw);
-    const cp = Math.cos(pitch), sp = Math.sin(pitch);
-    const rx = x * cy + z * sy, rz = -x * sy + z * cy;
-    return [rx, y * cp + rz * sp, y * sp - rz * cp];
+    y -= 4.5;
+    const rx = x * camera.cy + z * camera.sy;
+    const rz = -x * camera.sy + z * camera.cy;
+    return [rx, y * camera.cp + rz * camera.sp, y * camera.sp - rz * camera.cp];
   }
   function project(point) {
-    const focal = height * 1.12;
-    return [width / 2 + point[0] * focal / point[2], height / 2 - point[1] * focal / point[2]];
+    return [width / 2 + point[0] * camera.focal / point[2], height / 2 - point[1] * camera.focal / point[2]];
   }
   function clip(a, b) {
     const near = .3;
@@ -83,12 +88,51 @@
     return [project(a), project(b)];
   }
   const palette = {
-    grid: '#d3cdb526', detail: '#c5bda044', muted: '#d2ceb77a',
-    structure: '#e2dfc4b8', accent: '#c7a779df',
+    grid: '#82877912', detail: '#99917d20', muted: '#b0a58c29',
+    structure: '#c2b79842', accent: '#d4b68485',
   };
+  const wrapAngle = value => Math.atan2(Math.sin(value), Math.cos(value));
+  function drawMemoryPlanes(yaw) {
+    for (const plane of memoryPlanes) {
+      if (!plane.image.complete || !plane.image.naturalWidth) continue;
+      const delta = -1.24 + plane.phase * 2.48;
+      const point = cameraPoint(wallPoint(yaw + Math.PI + delta, plane.y, radius - 3.2));
+      if (point[2] <= .3) continue;
+      const [x, y] = project(point);
+      const scale = camera.focal / point[2];
+      const height = plane.size * scale;
+      const width = height * plane.image.naturalWidth / plane.image.naturalHeight;
+      const side = Math.max(.22, Math.cos(wrapAngle(delta)));
+      const edgeFade = .78 + Math.pow(Math.sin(Math.PI * plane.phase), .32) * .22;
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(side, 1);
+      ctx.globalAlpha = .96 * edgeFade;
+      ctx.shadowColor = '#d4b88a8a';
+      ctx.shadowBlur = 12;
+      ctx.drawImage(plane.image, -width / 2, -height / 2, width, height);
+      ctx.shadowBlur = 0;
+      ctx.globalCompositeOperation = 'source-atop';
+      const vignette = ctx.createRadialGradient(0, 0, height * .12, 0, 0, height * .72);
+      vignette.addColorStop(0, '#06070700');
+      vignette.addColorStop(.72, '#06070720');
+      vignette.addColorStop(1, '#020304b8');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(-width / 2, -height / 2, width, height);
+      ctx.restore();
+    }
+  }
   function draw() {
     frame = 0;
-    if (!visible) return;
+    if (!visible || !active) return;
+    const yaw = (reducedMotion.matches ? 0 : travel.yaw) + look.yaw;
+    const pitch = (reducedMotion.matches ? 0 : travel.pitch) + look.pitch;
+    camera.cy = Math.cos(yaw);
+    camera.sy = Math.sin(yaw);
+    camera.cp = Math.cos(pitch);
+    camera.sp = Math.sin(pitch);
+    camera.focal = height * .85 * Math.exp(-look.zoom * .08);
     ctx.clearRect(0, 0, width, height);
     for (const tone of ['grid', 'detail', 'muted', 'structure', 'accent']) {
       ctx.beginPath();
@@ -100,61 +144,104 @@
         if (!projected) continue;
         ctx.moveTo(...projected[0]); ctx.lineTo(...projected[1]);
       }
+      // A small warm halo only around the luminous rings.
+      ctx.shadowColor = tone === 'accent' ? '#d9b98580' : 'transparent';
+      ctx.shadowBlur = tone === 'accent' ? 6 : 0;
       ctx.stroke();
+      ctx.shadowBlur = 0;
     }
+    drawMemoryPlanes(yaw);
   }
   function invalidate() {
-    if (visible && !frame) frame = requestAnimationFrame(draw);
+    if (visible && active && !frame) frame = requestAnimationFrame(draw);
   }
   new ResizeObserver(() => {
     const rect = canvas.getBoundingClientRect();
     width = rect.width; height = rect.height;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     invalidate();
   }).observe(canvas);
   new IntersectionObserver(([entry]) => {
     visible = entry.isIntersecting;
-    document.body.classList.toggle('space-in-view', visible);
+
     invalidate();
   }).observe(stage);
 
-  // One pinned composition: the door and the world share the same viewport.
-  // Only the children and camera move; the pinned section remains stable.
-  if (window.gsap && window.ScrollTrigger) {
-    const mm = gsap.matchMedia();
-    mm.add({ reduced: '(prefers-reduced-motion: reduce)', full: '(prefers-reduced-motion: no-preference)' }, context => {
-      Object.assign(travel, { z: 14, x: 0, yaw: 0, pitch: .07 });
-      if (context.conditions.reduced) {
-        gsap.set(door, { autoAlpha: 0 });
-        gsap.set(layer, { opacity: 1 });
-        invalidate();
-        return;
-      }
-      const journey = gsap.timeline({
-        defaults: { ease: 'none' },
+  // Reveal at the midpoint of the original entrance, then share its scroll timeline.
+  if (window.gsap && typeof home_tl !== 'undefined') {
+    const duration = home_tl.duration();
+    const midpoint = duration * .5;
+    const domMemories = gsap.utils.toArray('.tunnel-memory');
+    const memoryFlow = gsap.timeline({ defaults: { ease: 'none' } });
+    const passDuration = duration * .62;
+    const cadence = duration * .52;
+    // Planes sweep across the interior wall from right to left without pausing.
+    memoryPlanes.forEach((plane, i) => {
+      const at = i * cadence;
+      memoryFlow.fromTo(plane, { phase: 0 }, {
+        phase: 1,
+        duration: passDuration,
         onUpdate: invalidate,
-        scrollTrigger: {
-          id: 'door-space', trigger: stage, start: 'top top',
-          end: () => '+=' + Math.round(window.innerHeight * 2.4),
-          pin: true, scrub: .8, anticipatePin: 1, invalidateOnRefresh: true,
-        },
-      });
-      journey
-        .fromTo(layer, { opacity: .28 }, { opacity: 1, duration: .9 }, 0)
-        .fromTo(door, { scale: 1, autoAlpha: 1 }, { scale: 7, duration: 1.15 }, 0)
-        .to(door, { autoAlpha: 0, duration: .45 }, .35)
-        .to(travel, { z: 6, x: .8, yaw: -.08, pitch: .12, duration: 2.8 }, 0)
-        .to(travel, { z: 5, duration: .5 }, 2.8);
-      return () => invalidate();
+      }, at);
     });
+    // Visible projected cards: kept in the same viewport as the canvas so they share the tunnel.
+    domMemories.forEach((memory, i) => {
+      const at = i * cadence;
+      memoryFlow.fromTo(memory, {
+        autoAlpha: 1,
+        x: () => window.innerWidth * .72,
+        y: 0,
+        rotationY: -34,
+        rotationZ: i % 2 ? 7 : -7,
+        scale: .9,
+      }, {
+        x: () => -window.innerWidth * 1.18,
+        y: i % 2 ? -24 : 22,
+        rotationY: 34,
+        rotationZ: i % 2 ? -7 : 7,
+        scale: 1.25,
+        duration: passDuration,
+        ease: 'none',
+      }, at);
+    });
+    function syncScene() {
+      const revealed = home_tl.time() >= midpoint;
+      if (active !== revealed) {
+        active = revealed;
+        stage.inert = !revealed;
+        document.body.classList.toggle('space-in-view', revealed);
+      }
+      if (active) invalidate();
+    }
+
+    home_tl
+      .addLabel('space-reveal', midpoint)
+      .fromTo(stage, { autoAlpha: 0 }, {
+        autoAlpha: 1, duration: duration * .18, ease: 'none',
+      }, midpoint)
+      .to(travel, {
+        yaw: Math.PI * 2, pitch: 0,
+        duration: duration * 3, ease: 'none',
+      }, midpoint)
+      .add(memoryFlow, midpoint)
+      .to('#tunnel-door', {
+        rotate: 80, duration: duration * 3, ease: 'none',
+      }, "<")
+    // .to('#tunnel-door', {
+    //   y: '-30vh', duration: duration * 2, ease: 'none'
+    // }, '<0.25')
+    home_tl.eventCallback('onUpdate', syncScene);
+    syncScene();
+    reducedMotion.addEventListener('change', invalidate);
     window.addEventListener('load', () => ScrollTrigger.refresh(), { once: true });
     document.fonts?.ready.then(() => ScrollTrigger.refresh());
   } else {
-    // The scene remains usable if the animation CDN is unavailable.
-    door.style.visibility = 'hidden';
-    layer.style.opacity = '1';
+    active = true;
+    stage.style.visibility = 'visible';
+    stage.style.opacity = '1';
+    stage.inert = false;
   }
 
   function aim(yaw, pitch) {

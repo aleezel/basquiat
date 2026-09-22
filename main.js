@@ -8,11 +8,19 @@ let layers = [
   { selector: '.darkblue', x: 0.8, y: 0.7 },
 ];
 
-let strength = 8;
+let strength = 20;
 let els = [];
 
 function init() {
-  els = layers.map(l => ({ el: document.querySelector(l.selector), ...l }));
+  els = layers.map(layer => {
+    const el = document.querySelector(layer.selector);
+    return {
+      ...layer,
+      el,
+      xTo: gsap.quickTo(el, 'x', { duration: 1.15, ease: 'expo.out' }),
+      yTo: gsap.quickTo(el, 'y', { duration: 1.15, ease: 'expo.out' }),
+    };
+  });
 }
 
 function buildGUI() {
@@ -90,43 +98,46 @@ function buildGUI() {
   });
 }
 
-document.addEventListener('mousemove', e => {
+document.addEventListener('pointermove', e => {
+  if (home_tl && home_tl.progress() > 0.85) return;
+
   const dx = (e.clientX - window.innerWidth / 2) / (window.innerWidth / 2);
   const dy = (e.clientY - window.innerHeight / 2) / (window.innerHeight / 2);
 
-  els.forEach(({ el, x, y }) => {
-    gsap.to(el, {
-      x: dx * x * strength,
-      y: dy * y * strength,
-      duration: 1.6,
-      ease: 'expo.out',
-      overwrite: 'auto',
-    });
+  els.forEach(({ x, y, xTo, yTo }) => {
+    xTo(dx * x * strength);
+    yTo(dy * y * strength);
   });
-});
+}, { passive: true });
+
+gsap.set('#hero-scene', { transformOrigin: '50% 50%', force3D: true });
+gsap.set('#tunnel-door', { transformOrigin: '49.98% 12.33%', force3D: true });
 
 // Scroll-driven zoom-out — pin the scene, animate on scroll
 let home_tl = gsap.timeline({
+  defaults: { ease: 'none' },
   scrollTrigger: {
     trigger: '#tunnel-stage',
     start: 'top top',
-    end: '+=200%',
+    end: () => '+=' + Math.round(window.innerHeight * 10),
     pin: true,
-    scrub: 1.5,
+    scrub: 0.75,
     anticipatePin: 1,
+    invalidateOnRefresh: true,
   }
 })
 
 home_tl
+  .addLabel('home-out', 0)
   .to("#hero-scene",
-    { scale: 0.05, autoAlpha: 1, ease: 'none', stagger: 0 }
-  )
+    { scale: 0.12, duration: 1, force3D: true }, 'home-out')
   .to("#hero-wrapper",
-    { clipPath: 'circle(0vw at 50vw 50vh)', ease: 'none' },
-    "0"
-  )
+    { clipPath: 'circle(0vmax at 50% 50%)', duration: 1 }, 'home-out')
   .to('#tunnel-door',
-    { scale: 0.5, ease: 'none' }, '0')
+    { scale: 0.075, duration: 1, force3D: true }, 'home-out')
+  .to('#hero-scene',
+    { autoAlpha: 0, duration: 0.38 }, 'home-out+=1.46')
+
 
 init();
 buildGUI();
